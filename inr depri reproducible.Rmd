@@ -1,0 +1,1163 @@
+---
+title: "**Brief Analysis:** Key Drivers of Indian Rupee Depreciation (2014-2025)"
+author: "Jeet Bhadouria"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, fig.align = "center")
+#loading necessary libraries
+library(lubridate)
+library(janitor)
+library(car)
+library(dplyr)
+library(conflicted)
+library(ggplot2)
+library(tidyr)
+library(zoo)
+library(lmtest)
+library(sandwich)
+library(tseries)
+library(broom)
+conflict_prefer("select", "dplyr")
+conflict_prefer("lag", "dplyr")
+conflict_prefer("filter", "dplyr")
+```
+# Abstract
+
+This study investigates the macroeconomic determinants of the Indian Rupee (INR) depreciation against the US Dollar (USD) from 2014 to 2025 using monthly data. By integrating a wide array of indicators—including trade deficit, foreign portfolio investment (FPI), crude oil prices, inflation, interest rate differentials, foreign exchange reserves, and market volatility indices (VIX)—we assess their respective impacts on exchange rate movements. Using Ordinary Least Squares (OLS) regression and lagged models, we find that US market volatility (VIX), domestic interest rates, and interest rate differentials are significant contributors to INR depreciation. Interestingly, crude oil prices and FPI outflows, often assumed to be dominant drivers, show weaker-than-expected and inconsistent effects.
+
+The analysis also highlights that INR depreciation has a modest pass-through effect on inflation, and RBI’s interventions through reserve management partially buffer the impact of capital outflows but are not always sufficient. A rolling window regression reveals that the effect of domestic repo rate changes on INR depreciation is more persistent and stable over time than the effect of Fed rate changes, underscoring the greater influence of domestic monetary policy. Finally, we show that INR volatility correlates more strongly with US VIX than India VIX, emphasizing the role of global investor sentiment over domestic market fear.
+
+Our findings contribute to the understanding of exchange rate dynamics in emerging markets, offering policy implications for central banks aiming to maintain currency stability amidst global shocks.
+
+
+## Introduction
+
+Exchange rate fluctuations have significant implications for emerging market economies, particularly those with open capital accounts and import-dependent energy sectors like India. The depreciation of the Indian Rupee (INR) against the US Dollar (USD) in recent years has sparked concerns regarding inflation, capital outflows, and macroeconomic stability. This study investigates the macroeconomic factors contributing to INR depreciation from 2014 to 2025, a period marked by global shocks such as crude oil volatility, changing US Federal Reserve policies, and market disruptions.
+
+Drawing on monthly and quarterly data, we examine the interplay between domestic indicators—including inflation, interest rates, and foreign exchange reserves—and global influences such as crude oil prices, foreign portfolio investments (FPI), and market volatility (VIX). Our objective is to quantify the relative impact of these variables on currency movement and assess the role of monetary policy in mitigating exchange rate pressure. By applying both static and time-varying econometric models, this research offers insights into the evolving drivers of INR volatility, contributing to the broader literature on exchange rate determination in emerging markets.
+
+### Core Objective:
+The core objective is to understand how these economic indicators drive INR depreciation or appreciation, both immediately and with lagged effects. We apply regression models, correlation tests, rolling analyses, and visualizations to answer key questions:
+
+1) How does India’s trade deficit affect the INR?
+
+2) Do rising oil prices weaken the INR—and under what reserve conditions?
+
+3) Can FPI outflows be offset by RBI’s intervention using forex reserves?
+
+4) Are repo rate hikes more influential on INR movement than Fed rate changes?
+
+5) Does inflation respond to currency depreciation (pass-through effect)?
+
+6) Which volatility index—India VIX or US VIX—better explains INR volatility?
+
+7) To assess the impact of India's GDP growth relative to the US on the strength of the Indian Rupee (INR) against the US Dollar (USD).
+
+This analysis emphasizes causality, asymmetry, and time-variation in the effects of macroeconomic variables on INR/USD trends, offering policy-relevant insights for exchange rate management and financial stability.
+
+### Methodology:
+
+Methodology
+This study investigates the macroeconomic factors influencing the Indian Rupee (INR) against the US Dollar (USD) from 2014 to 2025 using monthly time series data. The analysis is conducted using the R programming language for data processing, transformation, and modeling.
+
+1. Data Collection
+We collected monthly data on the following variables from reliable financial and economic data sources:
+
+- USD/INR exchange rate
+
+- Crude oil prices USD per barrel
+
+- Foreign portfolio investments (FPI)
+
+- India and US Consumer Price Index (CPI)
+
+- India's repo rate and the US Federal Funds rate
+
+- Foreign exchange reserves
+
+- India VIX (volatility index)
+
+- Trade balance (exports and imports)
+```{r}
+#loading data 
+#monthly exchange rates
+ex_rate<- read.csv("2014-2025 monthly exchange rate (USD INR).csv")
+# trade deficit
+trade<- read.csv("trade_deficit.csv")
+#crude oil
+oil<- read.csv("Crude Oil Monthly Price.csv")
+oil_b<- read.csv("oil14-15.csv")# for 2014-15 (financial year)
+# Forex reserve 
+forex<- read.csv("Forex reserve USD BN.csv")
+#inflation rate from 2014to 2025 (financial year)
+inf_rate<- read.csv("Inflation Rate 2015 to 2025 monthly.csv")#inflation rate 2015 to 2025(financial year)
+inf_b<- read.csv("inf14-15.csv") # 2014 to 2015 (financial year)
+#stability indices(VIX)
+vix<- read.csv("vix_us_ind_2014_2025.csv")
+#repo rate & fed rates
+repofed_rate<- read.csv("Repo Rate&Fed rates 2015 to 2024 (Monthly) USA-IND.csv")# from 2015 Jan to 2024 DEC
+repofed_b<- read.csv("repo&fed14-15.csv")# 2014 to 2015 (financial year)
+repofed_c<- read.csv("repo&fed2025.csv")# for 3 financial months
+# GDP growth rate
+gdp<- read.csv("GDP growth rate Quarterly (2015-2024).csv")
+# FPI
+fpi<- read.csv("FPI Monthly 2014 to 2025.csv")
+```
+
+2. Data Preparation
+Several derived variables were constructed to capture relevant economic relationships:
+
+- Interest Rate Differential: Difference between India’s repo rate and the US Fed rate
+
+- Inflation Differential: Difference between India's and the US CPI
+
+- Exchange Rate Change: Calculated as the log difference of USD/INR
+
+- Crude Oil Change: Log returns of Brent crude prices
+
+- Trade Balance: Exports minus imports
+
+- FPI Net Flow: Adjusted and rescaled to align with exchange rate dynamics
+```{r}
+#Data preparation
+#renaming columns to make it user friendly
+#ex_rate
+colnames(ex_rate)<- c("date","avg_exchange_rate")
+#trade
+colnames(trade)<- c("date","deficit_usd_bn", "exports_usd_bn", "imports_usd_bn")
+trade$date<- format(dmy(paste0("01", trade$date)), "%Y-%m")
+# oil
+oil<- oil[5:7] #required variables
+colnames(oil)<- c("date", "usd_per_barrel", "exchange")
+oil$date<- format(dmy(paste0("-01", oil$date)), "%Y-%m")# formatting
+colnames(oil_b)<- names(oil)
+oil_b$date<- format(ymd(paste0(oil_b$date, "-01")), "%Y-%m")#formatting
+oil_bind<- rbind(oil_b,oil) # combining 
+oil<- oil_bind[-12,]# removing duplicate row
+row.names(oil)<- NULL
+#inflation rate
+colnames(inf_rate)<- c("date", "inf_rate_perc", "exchange")
+inf_rate$date<- format(dmy(paste0("-01", inf_rate$date)),
+                       "%Y-%m")#formatting date
+inf_rate$inf_rate_perc<- as.numeric(sub("%", "",
+                                        inf_rate$inf_rate_perc))#unnecessary symbols
+#inf_b(inflation rate for financial year 2014-2015)
+inf_b$Month<- format(dmy(paste0("-01", inf_b$Month)),
+                     "%Y-%m") # formatting date
+inf_b$CPI_Inflation_Rate<- as.numeric(sub("%", "",
+                                          inf_b$CPI_Inflation_Rate))#unnecessary symbols
+colnames(inf_b)<- names(inf_rate)# renaming column
+inf_rate<- rbind(inf_b, inf_rate)# combining
+#forex reserves
+colnames(forex)<- c("date", "reserve", "exchange")
+forex$date<- format(dmy(paste0("-01", forex$date)), 
+                    "%Y-%m")
+#vix
+#combining year and month
+vix$Year<- paste(vix$Year, vix$Month)
+#removing unnecessary column
+vix$Month<- NULL
+# formating year column as yyyy-mm
+vix$Year<- format(as.Date(paste0("01", vix$Year), 
+                          "%d %Y %B"), "%Y-%m")
+#renaming the column
+colnames(vix)<- c("date", "avg_vix_usa", "avg_vix_ind", "exchange")
+#repofed_rate
+# doing the same process here too 
+repofed_rate<- repofed_rate[-(1:3),]# only taking financial year
+repofed_rate$Year<- paste(repofed_rate$Year, repofed_rate$Month)
+repofed_rate$Month<- NULL
+repofed_rate$Year<- format(as.Date(paste0("01", repofed_rate$Year), 
+                                   "%d %Y %B"), "%Y-%m")
+#renaming columns
+colnames(repofed_rate)<- c("date", "repo_rate_inr", "fed_rate_usd", "exchange")
+colnames(repofed_b)<- names(repofed_rate)
+colnames(repofed_c)<- names(repofed_rate)
+#formatting and combining
+repofed_b$date<- format(ymd(paste0(repofed_b$date,"-01")), "%Y-%m")
+repofed_c$date<- format(ymd(paste0(repofed_c$date,"-01")), "%Y-%m")
+repofed<- rbind(repofed_b, repofed_rate,repofed_c)
+#gdp
+colnames(gdp)<- c("year", "quarter", "growth_rate_ind", "growth_rate_usa", "exchange")
+#fpi
+# as this is an untidy data in which the first row contains the column name and r assigned default column names
+fpi<- fpi%>%
+  row_to_names(row_number = 1, remove_row = TRUE) #first row = Column names
+rownames(fpi)<- NULL# reset row names
+fpi<- fpi[1:6] #filtering
+fpi$Year<- paste(fpi$Year, fpi$Month)
+fpi$Month<- NULL#deleting 
+fpi$Year<- format(as.Date(paste0("01", fpi$Year),
+                          "%d %Y %B"), "%Y-%m")
+colnames(fpi)<- c("date", "equity", "debt", "total", "exchange")
+#combining all of this in one data set
+combined<- ex_rate%>%
+  full_join(fpi, by = "date")%>%
+  full_join(trade, by = "date")%>%
+  full_join(forex, by = "date")%>%
+  full_join(vix, by = "date")%>%
+  full_join(inf_rate, by = "date")%>%
+  full_join(oil, by = "date")%>%
+  full_join(repofed,by = "date")
+  
+#making it clean
+combined<- combined%>%
+  select(-c(exchange.x, exchange.y, exchange.x.x,
+            exchange.y.y,exchange.x.x.x, exchange.y.y.y))# removing unwanted variables
+combined$year<- substr(combined$date, 1,4)
+```
+
+The dataset was cleaned to handle missing values, rescaled for comparability, and visualized to examine trends.
+
+3. Statistical Modeling
+We employed multiple linear regression to assess the relationship between monthly changes in the INR/USD exchange rate and the macroeconomic indicators.
+
+All assumptions of linear regression, including multicollinearity, were assessed using correlation matrices and diagnostic plots.
+
+4. Tools and Software
+All data handling, transformation, visualization, and modeling were performed in R, using libraries such as:
+
+- tidyverse for data manipulation
+
+- lubridate for date handling
+
+- ggplot2 for plotting
+
+- stats and lm() for regression analysis
+
+The workflow ensures transparency and reproducibility, with clearly defined steps from data import to model interpretation.
+
+### Glimpse of the Codebook:
+```{r}
+codebook <- data.frame(
+  Variable = c(
+    "avg_exchange_rate",
+    "deficit_usd_bn",
+    "exports_usd_bn",
+    "imports_usd_bn",
+    "usd_per_barrel",
+    "reserve",
+    "inf_rate_perc",
+    "avg_vix_usa",
+    "avg_vix_ind",
+    "repo_rate_inr",
+    "fed_rate_usd",
+    "equity",
+    "debt",
+    "exchange_dep",
+    "trade_balance",
+    "net_inflow",
+    "oil_lag",
+    "rate_diff",
+    "volatility",
+    "log_return"
+  ),
+ Description = c(
+  "USD/INR exchange rate",
+  "Trade deficit (USD bn)",
+  "Exports (USD bn)",
+  "Imports (USD bn)",
+  "Crude oil price (USD/barrel)",
+  "FX reserves (USD bn)",
+  "Inflation rate (%)",
+  "US VIX index",
+  "India VIX index",
+  "RBI repo rate (%)",
+  "US Fed rate (%)",
+  "FPI in equity (USD)",
+  "FPI in debt (USD)",
+  "Exchange rate depreciation (log)",
+  "Trade balance (exports - imports)",
+  "Net capital inflows (equity - debt)",
+  "Lagged oil price (1 month)",
+  "Interest rate differential (INR - USD)",
+  "3M rolling volatility (log returns)",
+  "Exchange rate log return"
+  ),
+ Source = c(
+    "RBI",
+    "Ministry of Commerce",
+    "Ministry of Commerce",
+    "Ministry of Commerce",
+    "Bloomberg",
+    "RBI",
+    "Ministry of Statistics",
+    "CBOE",
+    "NSE India",
+    "RBI",
+    "Federal Reserve",
+    "SEBI",
+    "SEBI",
+    "Calculated",
+    "Calculated",
+    "Calculated",
+    "Calculated",
+    "Calculated",
+    "Calculated",
+    "Calculated"
+  ),
+  Time_Period = c(
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly",
+    "2014-2025 monthly"
+  ),
+  Unit = c(
+    "INR per USD",
+    "USD billions",
+    "USD billions",
+    "USD billions",
+    "USD per barrel",
+    "USD billions",
+    "Percentage",
+    "Index points",
+    "Index points",
+    "Percentage",
+    "Percentage",
+    "USD",
+    "USD",
+    "Log difference",
+    "USD billions",
+    "USD",
+    "USD per barrel",
+    "Percentage points",
+    "Standard deviation",
+    "Log return"
+  ),
+  Transformation = c(
+    "None",
+    "None",
+    "None",
+    "None",
+    "Lagged by 1 month",
+    "None",
+    "Percentage to decimal",
+    "None",
+    "None",
+    "None",
+    "None",
+    "Converted to numeric",
+    "Converted to numeric",
+    "log(rate_t/rate_t-1)",
+    "exports - imports",
+    "equity - debt",
+    "lag(usd_per_barrel, 1)",
+    "repo_rate_inr - fed_rate_usd",
+    "3-month rolling sd",
+    "log(rate_t/rate_t-1)"
+  )
+)
+codebook_df<- codebook[,c(1:3,6)]
+options(width = 120)
+print(codebook_df)
+```
+
+## 1) First step:
+
+To initiate the analysis, we will examine the relationship between the exchange rate and a few key variables to determine whether they have a significant impact. If these variables show a strong correlation, we will continue the analysis with them; otherwise, we will consider exploring additional factors. To support this assessment, we will begin by visualizing key variable individually.
+
+- *Plot:1.1 Foreign Investment Portfolio vs Average Exchange Return* 
+
+In the first plot, I compare the exchange rate with foreign portfolio investment (FPI). Since these two variables are not directly comparable in scale, I rescaled both series for visualization purpose. Specifically, I used the difference of logarithm of the exchange rate to capture relative changes which will give log returns, while the FPI values were divided by 100 to present a cleaner and more interpretable plot.
+
+```{r}
+# Plot: FPI vs Average Exchange Rate
+combined_plot<- combined%>%
+  mutate(exchange_dep = c(NA, diff(log(avg_exchange_rate))),
+         across(-date, as.numeric),
+         fpi = total)
+ggplot(combined_plot, aes(x = fpi/100, y = exchange_dep)) +
+  geom_point(color = "#2c3e50", size = 3, alpha = 0.8) +
+  geom_smooth(method = "loess", se = FALSE, color = "#e74c3c", linetype = "dashed") +
+  labs(title = "Log Returns vs FPI", x = "Rescaled FPI", y = "Log returns", caption = "Fig: 1.1") +
+  theme_minimal(base_size = 14)
+```
+
+**Observation**
+
+We calculated exchange rate changes as log returns, which means percentage changes over time. FPI has been scaled down to make the plot easier to read.
+
+From the plot, we see that when FPI is negative (meaning investors are pulling money out), the exchange rate tends to rise, which may suggest depreciation of the domestic currency. When FPI is positive (more investment is coming in), the exchange rate returns are slightly negative, indicating possible currency appreciation.
+
+However, the points are quite spread out, meaning that FPI alone doesn't strongly explain changes in the exchange rate. Other factors may also play a big role.
+
+- *Plot:1.2 Fiscal Deficit vs Exchange Log Returns* 
+
+In this analysis, I compare the exchange rate log returns with the fiscal deficit. For clearer visualization, both series have been rescaled, similar to the approach used in the initial plot.
+
+```{r}
+ggplot(combined_plot, aes(x = deficit_usd_bn, y = exchange_dep)) +
+  geom_point(color = "#9b59b6", size = 3, alpha = 0.8) +
+  geom_smooth(method = "loess", se = FALSE, color = "#2980b9", linetype = "dashed") +
+  labs(title = "Exchange Rate Log Returns vs Fiscal Deficit", x = "Deficit (USD Billion)", y = "Log Returns", caption = "Fig:1.2") +
+  theme_minimal(base_size = 14)
+```
+
+**Observation**
+
+In this graph, we observe a slight downward trend, suggesting that as the fiscal deficit increases (becomes more negative), the log returns of the exchange rate tend to decline slightly. This indicates a mild depreciation of the Indian Rupee during periods of higher fiscal deficit.
+
+The wide spread of data points shows that this relationship is weak, meaning the fiscal deficit alone does not have a strong or consistent impact on the currency.
+
+- *Plot:1.3 Trade Balance vs Exchange Log returns*
+
+This plot examines the relationship between India’s trade balance (exports - imports) and the log returns of the exchange rate. A trade deficit may increase demand for foreign currency, potentially weakening the Indian Rupee, while a trade surplus could have the opposite effect.
+
+```{r}
+ggplot(combined_plot, aes(x = exports_usd_bn - imports_usd_bn, y = exchange_dep)) +
+  geom_point(color = "#e67e22", size = 3, alpha = 0.8) +
+  geom_smooth(method = "loess", se = FALSE, color = "#2ecc71", linetype = "dashed") +
+  labs(title = "Exchange Rate Log Returns vs Trade Balance", x = "Trade Balance", y = "Log Returns", caption = "Fig:1.3") +
+  theme_minimal(base_size = 14)
+```
+
+**Observation**
+
+This graph shows a slight negative relationship between the trade balance and exchange rate log returns. As the trade balance becomes more negative (larger trade deficit), the log returns tend to decrease slightly, suggesting a mild depreciation of the Indian Rupee. However, the points are quite scattered, so the connection is weak.
+
+***Key Observation***
+
+Based on the initial visual analysis, it appears that when each variable is considered individually, their impact on the domestic currency is minimal. No single factor demonstrates a strong or consistent influence on the exchange rate in isolation, suggesting that a multivariable approach may be necessary for deeper insights.
+
+**Secondary Approach**
+
+*Alternate approach* involves processing all variables with necessary adjustments to improve accuracy. Each variable will then be tested individually using regression analysis. The resulting estimates will be visualized to gain insights into the strength and direction of their correlation with the target variable.
+
+An Ordinary Least Squares (OLS) regression was used to assess the impact of key macroeconomic variables on INR depreciation. The results were cleaned and relabeled for clarity, and coefficients were scaled by 100 for interpretability. A horizontal bar chart visualizes the effect size and direction, with 95% confidence intervals.(Fig:1.4)
+
+```{r}
+combined_clean <- combined %>%
+  arrange(date) %>%
+  mutate(
+    exchange_dep = log(avg_exchange_rate / lag(avg_exchange_rate)),
+    trade_balance = exports_usd_bn - imports_usd_bn,
+    net_inflow = as.numeric(equity) - as.numeric(debt),
+    oil_lag = lag(usd_per_barrel),
+    rate_diff = repo_rate_inr - fed_rate_usd,
+    across(-date, as.numeric)
+  ) %>%
+  select(-c(avg_exchange_rate, exports_usd_bn, imports_usd_bn, equity, debt)) %>%
+  na.omit()
+
+# Regression Model
+reg_combined <- lm(
+  exchange_dep ~ net_inflow + deficit_usd_bn + reserve + 
+    avg_vix_usa + avg_vix_ind + inf_rate_perc + 
+    oil_lag + rate_diff,
+  data = combined_clean)
+# Visualization
+regcomb_tidy <- tidy(reg_combined, conf.int = TRUE) %>%
+  filter(term != "(Intercept)") %>%
+  mutate(
+    term = case_when(
+      term == "inf_rate_perc" ~ "Domestic Interest Rate (%)",
+      term == "rate_diff" ~ "Interest Rate Differential (INR-USD)",
+      term == "avg_vix_usa" ~ "US Market Volatility (VIX)",
+      term == "avg_vix_ind" ~ "Indian Market Volatility (VIX)",
+      term == "oil_lag" ~ "Lagged Oil Prices (USD/barrel)",
+      term == "net_inflow" ~ "Net Capital Inflows (USD bn)",
+      term == "reserve" ~ "Foreign Exchange Reserves",
+      term == "deficit_usd_bn" ~ "Fiscal Deficit (USD bn)",
+      TRUE ~ term
+    )
+  )
+
+ggplot(regcomb_tidy, aes(
+  x = reorder(term, estimate), 
+  y = estimate * 100,
+  fill = estimate > 0,
+  ymin = conf.low * 100,
+  ymax = conf.high * 100
+)) +
+  geom_col(width = 0.7) +
+  geom_text(
+    aes(label = sprintf("%.2f", estimate * 100)),
+    hjust = ifelse(regcomb_tidy$estimate > 0, -0.2, 1.2),
+    size = 3.5
+  ) +
+  coord_flip() +
+  scale_fill_manual(
+    values = c("TRUE" = "#e6550d", "FALSE" = "#3182bd"),
+    labels = c("Stronger INR", "Weaker INR"),
+    name = "Effect Direction"
+  ) +
+  labs(
+    title = "INR Depreciation: Macroeconomic Impact",
+    subtitle = "Positive coefficients imply INR weakening\nBars show scaled estimates (×100)\nwith 95% Confidence Interval.",
+    x = NULL,
+    y = "Effect on INR Depreciation (Scaled ×100)",
+    caption = "Source: RBI, FRED, and Bloomberg data | Model: OLS Regression | Fig:1.4"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    legend.position = "top",
+    plot.title = element_text(face = "bold"),
+    plot.subtitle = element_text(hjust = 0,color = "gray40"),
+    panel.grid.major.y = element_blank()) +
+  scale_y_continuous(expand = expansion(mult = c(0.1, 0.15)), 
+                     limits = c(-0.1, 0.1))
+```
+
+**Key Findings:**
+
+*INR Weakening Factors*:
+
+Market Volatility (VIX): Both US Market Volatility (VIX) and Indian Market Volatility (VIX) are significant contributors to INR depreciation. Higher fear in either market is associated with a weaker Rupee.
+
+Domestic Interest Rate (%): Surprisingly, a higher domestic interest rate also shows a positive association with INR depreciation in this model.
+
+*INR Strengthening Factors*:
+
+Interest Rate Differential (INR-USD): A wider positive interest rate differential (India's rates higher than US) significantly strengthens the INR.
+
+Fiscal Deficit (USD bn): A larger fiscal deficit surprisingly correlates with a stronger INR in this model.
+
+*Negligible Impact:*
+
+Lagged Oil Prices, Net Capital Inflows, and Foreign Exchange Reserves show negligible impact on INR depreciation.
+
+**Conclusion:**
+
+Market volatility (VIX) from both the US and India, alongside domestic interest rates, are key drivers of INR weakening. Conversely, the INR benefits from a higher interest rate differential and, unexpectedly, a larger fiscal deficit. Variables like oil prices and capital flows currently exhibit minimal influence in this model.
+
+##  Brief Statistical Assessment
+
+-- *In this section, we analyze and evaluate our objectives using various statistical methods to derive insights that support the achievement of our core goals.*
+
+To begin, we assess the correlation between India’s monthly fiscal deficit and INR depreciation, followed by a visual analysis. The changes in exchange rate are calculated using the difference in the logarithmic values of the average monthly exchange rate, allowing for a more accurate representation of percentage changes over time.
+
+```{r}
+#How India’s monthly trade deficit correlates
+#with INR/USD depreciation using your dataset.
+deficit_df<- combined%>%
+  arrange(date)%>%
+  mutate(exchange_dep = c(NA, diff(log(avg_exchange_rate))))%>%
+  select(date, exchange_dep, deficit_usd_bn)%>%
+  na.omit()
+deficit_cor<-cor(deficit_df$deficit_usd_bn, deficit_df$exchange_dep)# we've got slight negative correlation 
+#visualization
+ggplot(deficit_df, aes(x = deficit_usd_bn, y = exchange_dep)) +
+  geom_point(color = "#2980b9", size = 3, alpha = 0.8) +  # blue points
+  geom_smooth(method = "lm", se = FALSE, color = "#e74c3c", linetype = "solid", size = 1) +  # red regression line
+  labs(
+    title = "Impact of Trade Deficit on INR Movement",
+    subtitle = "Linear relationship between trade deficit (USD Bn) and INR log returns",
+    x = "Trade Deficit (USD Billion)",
+    y = "Exchange Rate Log Returns"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(face = "bold")
+  )
+
+cat("Correlation of trade deficit with the change in INR", deficit_cor)
+## -0.1234276 weak negative correlation
+```
+
+**Observation**
+
+*Plot Interpretation:*
+
+The plot shows the linear relationship between India’s trade deficit and exchange rate log returns. The red regression line has a slight negative slope, suggesting that as the trade deficit increases (i.e., becomes more negative), the log returns of the exchange rate tend to decline slightly.
+
+This indicates that larger trade deficits may be linked to mild depreciation of the Indian Rupee (INR).
+
+*Analysis of correlation suggests*
+
+The correlation between the trade deficit and changes in the INR is approximately -0.12, indicating a weak negative relationship. This suggests that as the trade deficit increases, the INR tends to depreciate slightly, although the relationship is not strong.
+
+**Next**, *we conduct a brief lagged analysis to explore whether there are any delayed effects in the relationship.*
+
+In this section, a 3-month lag is applied to the fiscal deficit to examine its delayed impact on INR depreciation, measured using the log-differenced values of the average exchange rate. The correlation between the lagged deficit and exchange rate changes is then calculated and visualized for clearer interpretation. 
+
+```{r}
+
+deficit_df<- deficit_df%>%
+  mutate(lagged = lag(deficit_usd_bn,3))
+deficit_lagged<-cor(deficit_df$exchange_dep, deficit_df$lagged, use = "complete.obs")#-0.1265755
+library(ggplot2)
+
+ggplot(deficit_df, aes(x = lagged, y = exchange_dep)) +
+  geom_point(color = "#8e44ad", size = 3, alpha = 0.8) +  # purple points
+  geom_smooth(method = "lm", se = FALSE, color = "#c0392b", linetype = "solid", size = 1) +  # regression line
+  labs(
+    title = "Lagged Effect of Trade Deficit on INR Movement",
+    subtitle = "Trade deficit lagged by 3 months vs Exchange Rate Log Returns",
+    x = "Trade Deficit (Lagged by 3 months, USD Billion)",
+    y = "Exchange Rate Log Returns"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(face = "bold")
+  )
+
+cat("lagged correlation of trade deficit with INR change", deficit_lagged)
+```
+
+**Observation**
+
+*Plot Interpretation*
+
+The red regression line shows a mild negative slope, and the correlation coefficient is approximately -0.16. This suggests that a larger trade deficit three months earlier tends to be followed by a slight depreciation of the Indian Rupee (INR).
+
+*Analysis of correlation Suggests*
+
+While the relationship remains weak, the correlation is slightly stronger than in the non-lagged version (which had a weaker slope and a lower correlation). This may imply that the impact of trade imbalances on currency movement takes time to reflect in the exchange rate, and immediate changes may not capture the full effect.
+
+-*In the next step of our analysis, we examine how changes in lagged oil prices impact INR depreciation.*
+As previously observed in *Fig:1.4*, the direct impact of oil prices on INR depreciation appears to be minimal. Therefore, in this section, rather than analyzing the immediate relationship, we focus on examining whether lagged changes in oil prices — with delays of 1, 2, or 3 months — have any delayed influence on INR movement. 
+
+```{r}
+oil_df<- combined%>%
+  arrange(date)%>%
+  mutate(exchange_dep = c(NA, diff(log(avg_exchange_rate))),
+         difference = c(NA,diff(usd_per_barrel)))%>%
+  select(date, difference, exchange_dep)%>%
+  na.omit()
+
+lagged_first <- combined %>%
+  arrange(date) %>%
+  mutate(oil_diff = c(NA, diff(usd_per_barrel)),
+         exchange_dep = c(NA, diff(log(avg_exchange_rate))),
+         lag = lag(oil_diff, 1))%>%
+  select(date, oil_diff, exchange_dep, lag)%>%
+  na.omit()
+#for two month
+lagged_sec<- combined %>%
+  arrange(date) %>%
+  mutate(oil_diff = c(NA, diff(usd_per_barrel)),
+         exchange_dep = c(NA, diff(log(avg_exchange_rate))),
+         lag = lag(oil_diff, 2))%>%
+  select(date, oil_diff, exchange_dep, lag)%>%
+  na.omit()
+#for 3 month
+lagged_thi<- combined %>%
+  arrange(date) %>%
+  mutate(oil_diff = usd_per_barrel,
+         exchange_dep = c(NA, diff(log(avg_exchange_rate))),
+         lag = lag(oil_diff, 3))%>%
+  select(date, oil_diff, exchange_dep, lag)%>%
+  na.omit()
+# Add a lag_label column to each
+lagged_first$lag_type <- "1-Month Lag"
+lagged_sec$lag_type <- "2-Month Lag"
+lagged_thi$lag_type <- "3-Month Lag"
+#Bind all into one dataframe
+lagged_combined <- bind_rows(lagged_first, lagged_sec, lagged_thi)
+#visualize
+ggplot(lagged_combined, aes(x = lag, y = exchange_dep, color = lag_type)) +
+  geom_jitter(width = 0.3, height = 0.002, alpha = 0.6, size = 2.5) +
+  geom_smooth(method = "lm", se = FALSE, size = 1.2) +
+  labs(
+    title = "Lagged Impact of Oil Price Changes on INR Movement",
+    subtitle = "Using jittered scatter for better visibility",
+    x = "Lagged Oil Price Change (USD/barrel)",
+    y = "Exchange Rate Log Returns",
+    color = "Lag Type"
+  ) +
+  theme_minimal(base_size = 14)
+# Calculate correlations
+cor_0  <- cor(oil_df$difference, oil_df$exchange_dep)
+cor_1  <- cor(lagged_first$exchange_dep, lagged_first$lag)
+cor_2  <- cor(lagged_sec$exchange_dep,lagged_sec$lag)
+cor_3  <- cor(lagged_thi$exchange_dep,lagged_thi$lag)
+cat("Correlation between oil and Exchange log return, without delayed effects", cor_0,"\n", "Correlation for one month delayed effect of oil prices with INR",cor_1,"\n", "Correlation for two months delayed effect of oil prices with INR", cor_2, "\n","Correlation for three months delayed effect of oil prices on INR", cor_3 )
+
+```
+
+**Interpretation**
+
+*Visual Understanding:*The short-term impact (1–2 months) of oil price fluctuations on the INR appears negligible. However, a modest delayed effect emerges after a 3-month lag, suggesting that changes in oil prices may influence INR movements with some latency. This could be attributed to the time required for oil import bills, inflationary pressures, or monetary policy responses to filter through the economy and affect the exchange rate. These findings support the hypothesis that the INR adjusts gradually to oil price shocks rather than reacting instantaneously.
+
+Oil prices show little to no immediate impact on INR movement. However, a three-month lag displays a comparatively stronger correlation, suggesting that delayed oil price shocks could have a modest effect on currency depreciation, possibly due to slower transmission of oil import costs into macroeconomic variables like the trade balance and inflation.
+
+- *Next, we assess whether the strength of the correlation between oil prices and INR depreciation changes based on the level of Forex reserves (low vs. high)*
+
+For this analysis, I used the log-differenced values of the average exchange rate to represent INR depreciation, along with the differenced oil prices to enhance accuracy. To distinguish between periods of low and high foreign exchange reserves, I calculated the median value of the forex reserve variable. Observations below the median are categorized as 'low reserves', while those above are classified as 'high reserves'.
+
+```{r}
+median_res<-median(combined$reserve) # below this point forex will be considered low
+res_data<- combined%>%
+  arrange(date)%>%
+  mutate(oil_diff = c(NA, diff(usd_per_barrel)),
+         exchange_dep = c(NA, diff(log(avg_exchange_rate))),
+         forex_level = ifelse(reserve<median_res,"low", "high"))%>%
+  select(date, oil_diff, exchange_dep, forex_level, reserve)%>%
+  na.omit() # made the column with labels
+# calculating correlation for the reserves below median
+cor_low<- cor(res_data$oil_diff[res_data$forex_level=="low"],
+              res_data$exchange_dep[res_data$forex_level=="low"])
+# calculating correlation for the reserves above median
+cor_high<- cor(res_data$oil_diff[res_data$forex_level=="high"],
+               res_data$exchange_dep[res_data$forex_level=="high"])
+cat("Correlation between oil prices and INR depreciation during low forex reserve periods", cor_low,"\n", "Correlation between oil prices and INR depreciation during high forex reserve periods", cor_high)
+```
+
+**Observation**
+
+During low forex reserve periods, the correlation between oil prices and INR depreciation is -0.06, indicating a very weak relationship. In contrast, during high reserve periods, the correlation strengthens to -0.30, suggesting that oil price changes have a more noticeable impact on the INR when reserves are higher.
+
+This may be because higher reserves reflect a more stable economic environment, allowing external factors like oil prices to influence the exchange rate more directly. In periods of low reserves, other domestic pressures might overshadow the effect of oil price fluctuations.
+
+- *We now switch variables to explore additional perspectives on what drives INR movement.*
+
+In this section, I analyze the relationship between Net FPI (equity + debt), the log-differenced average exchange rate (to represent INR depreciation), and the change in forex reserves. As a follow-up to the previous analysis, I first calculate the correlation between Net FPI and INR depreciation to assess whether capital outflows consistently weaken the currency. The primary objective here is to evaluate if RBI’s forex reserve interventions offset the impact of FPI outflows. To visualize this, I created a time series plot comparing changes in forex reserves with Net FPI movements.
+
+```{r}
+fpi_df<- combined%>%
+  arrange(date)%>%
+  mutate(net_fpi = as.numeric(equity)+as.numeric(debt), 
+         exchange_dep = c(NA, diff(log(avg_exchange_rate))), 
+         res_change = c(NA,diff(reserve)))%>%
+  select(date, net_fpi, exchange_dep, res_change, reserve)%>%
+  na.omit()
+fpi_df$date<- format(as.Date(paste0(fpi_df$date, "-01")), "%Y-%m-%d")
+fpi_df$date <- as.Date(trimws(fpi_df$date))  # removes any leading/trailing spaces
+fpi_df <- fpi_df %>%
+  # Convert to date if needed
+  mutate(date = as.Date(date)) %>%
+  # Fill missing dates
+  mutate(
+    year = year(date),
+    month = month(date)
+  ) %>%
+  fill(year, month, .direction = "downup") %>%  # fill missing year/month
+  mutate(
+    date = as.Date(paste(year, month, 02, sep = "-"))  # reconstruct date: yyyy-mm-30
+  ) %>%
+  select(-year, -month)  # cleanup
+date<- fpi_df$date
+cor_fpi <- cor(fpi_df$net_fpi, fpi_df$exchange_dep)
+
+covid_fpi<- fpi_df[fpi_df$net_fpi==min(fpi_df$net_fpi),]
+covid_fpi_date<-as.Date(covid_fpi$date)
+#plotting (reserve and fpi)
+ggplot(data = fpi_df, aes(x = date)) +
+  # Line for Reserve Change
+  geom_line(aes(y = res_change * 10, color = "Reserve Change ×10"), size = 1) +
+  
+  # Line for Net FPI
+  geom_line(aes(y = net_fpi / 100, color = "Net FPI ÷100"), size = 1, linetype = "dashed") +
+  
+  # Highlight point during severe COVID depreciation
+  geom_point(data = fpi_df %>% filter(date == covid_fpi_date),
+             aes(y = net_fpi / 100, color = "COVID Shock"),
+             size = 3, shape = 21, fill = "red") +
+  
+  # Customize colors manually
+  scale_color_manual(values = c(
+    "Reserve Change ×10" = "#1f77b4",
+    "Net FPI ÷100" = "#2ca02c",
+    "COVID Shock" = "#d62728"
+  )) +
+  
+  # X-axis formatting
+  scale_x_date(date_breaks = "1 year", date_labels = "%Y") +
+  
+  # Labels and theme
+  labs(
+    title = "Relation Between Forex Reserves and Net FPI Over Time",
+    subtitle = "Values are rescaled for comparison; COVID impact is highlighted",
+    x = "Year",
+    y = "Rescaled Values",
+    color = ""
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 12),
+    axis.title = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+cat("Correlation netween Net FPI and INR depriciation", cor_fpi)
+```
+
+**Observation**
+
+The correlation between Net FPI and INR depreciation is -0.44, indicating a moderate negative relationship—FPI outflows are generally linked with INR weakening. The time series plot shows that forex reserve changes often move counter to Net FPI, suggesting possible RBI intervention. This trend is especially noticeable during high-volatility periods, such as the COVID shock.
+
+By rescaling both variables, the visual comparison highlights how reserve movements may cushion the impact of capital outflows. While not perfectly aligned, the offsetting pattern supports the idea of active forex management. This helps maintain currency stability in the face of external financial pressures.
+
+- This observation leads to an important and interesting question: What is the average time it takes for forex reserves to recover after being utilized to stabilize the INR? Understanding this recovery period can provide deeper insights into the sustainability and long-term impact of RBI’s intervention strategy.
+
+```{r}
+#how reserves change in the next 1-3 months (lagged analysis)
+lead_res <- fpi_df %>%
+  mutate(reserve_change_1m = lead(reserve, 1) - reserve,
+         reserve_change_2m = lead(reserve, 2) - reserve,
+         reserve_change_3m = lead(reserve, 3) - reserve)
+#How quickly do forex reserves recover after being used to stabilize the INR
+avg_lead_res<- lead_res%>%
+  summarise(avg_1m = mean(reserve_change_1m, na.rm = TRUE),
+         avg_2m = mean(reserve_change_2m, na.rm = TRUE),
+         avg_3m = mean(reserve_change_3m, na.rm = TRUE))
+recovery_res<- lead_res%>%
+  mutate(recovery_month = case_when(
+   reserve_change_1m > 0 ~ 1,
+   reserve_change_2m > 0 ~ 2,
+   reserve_change_3m > 0 ~ 3,
+   TRUE~4))
+avg_recovery_time<- mean(recovery_res$recovery_month, na.rm = TRUE)
+cat("Average recovery time (months)", avg_recovery_time)
+```
+
+The average reserve recovery period of approximately 1.82 months indicates that forex reserves used to stabilize the INR are generally restored within two months. This reflects effective reserve management and demonstrates a robust external financial stance.
+
+**For this part** 
+
+*Asymmetry Analysis:*
+To investigate whether currency depreciation responds more to repo rate cuts compared to changes in the Federal Reserve's policy rate, I used log-differenced values of the average exchange rate as the dependent variable. Key explanatory variables include the rate differential between the RBI's repo rate and the U.S. Fed funds rate (repo_rate_INR - fed_rate_USD), standalone changes in both rates, and a dummy variable capturing repo rate hikes, along with its interaction with the rate change.
+
+To gain deeper insight into how these relationships evolve over time, I applied a rolling regression (coefficient) analysis, allowing for dynamic assessment of the impact of monetary policy shifts on exchange rate movements.
+
+
+```{r}
+#Asymmetry: Does depreciation respond more to repo hikes than
+#to repo cuts (vs. fed changes)
+repofed_df<- combined%>%
+  mutate(exchange_dep = c(NA, diff(log(avg_exchange_rate))),
+         repo_change = c(NA, diff(repo_rate_inr)), 
+         fed_change = c(NA, diff(fed_rate_usd)),
+         rate_gap = repo_rate_inr - fed_rate_usd,
+         repo_hike = ifelse(repo_change> 0,1,0),
+         inter = repo_hike*repo_change)%>%
+  select(date, exchange_dep, repo_change,fed_change, rate_gap, repo_hike, inter)%>%
+  na.omit()#Create rate gap
+repofed_df$date <- date
+df<- repofed_df
+#parameters
+window<- 24
+n<- nrow(df)
+#empty data frame to store coefficients
+roll_coef_repofed<- data.frame(
+  date = df$date[window:n],
+  repo_coef = NA,
+  fed_coef = NA
+)
+#rolling regression
+for (i in window:n) {
+  window_data<- df[(i-window+1):i,]
+  model_repofed_change<- lm(exchange_dep~repo_change+fed_change+inter, data = window_data)
+  coefs<- coef(model_repofed_change)
+  roll_coef_repofed$repo_coef[i - window + 1]<- coefs["repo_change"]
+  roll_coef_repofed$fed_coef[i - window + 1]<- coefs["fed_change"]
+}
+repofed_roll<-roll_coef_repofed%>%
+  pivot_longer(cols = c("repo_coef", "fed_coef"),
+               names_to = "variable",
+               values_to = "coefficient")
+ggplot(data = repofed_roll, aes(x = date, y = coefficient, colour = variable)) +
+  geom_line(lwd = 1.2, lineend = "round") +                
+  geom_point(size = 3, shape = 21, stroke = 1,              
+             fill = "white", alpha = 0.9) +                 
+  scale_colour_brewer(palette = "Set2") +                   
+  labs(
+    title = "Rolling Coefficients of Repo and Fed Rates",
+    x = "Year",
+    y = "Coefficients",
+    color = "Variable"
+  ) +
+  theme_minimal(base_size = 15) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 18, margin = margin(b = 15)),
+    axis.title = element_text(face = "bold", size = 14),
+    axis.text = element_text(color = "gray30"),
+    legend.position = "top",
+    legend.title = element_text(face = "bold", size = 13),
+    legend.text = element_text(size = 12),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_line(color = "gray90")
+  )
+```
+
+
+**Observation**
+
+The rolling coefficients show stronger and more persistent positive effects when the RBI hikes rates (INR tends to depreciate).
+
+The response to Fed rate changes is weaker and more volatile, sometimes even negative.
+
+Key Finding: INR depreciation responds more sharply to RBI repo hikes than to cuts or Fed rate changes, suggesting domestic monetary policy has asymmetric effects on the exchange rate.
+
+*In this section* we're going to examine whether inr depriciation is associated with higher CPI inflation and change in oil prices in subsequent months. to proceed ive taken logg differenced value of average exchange rate, change in oil prices and interaction of oil prices and exchange rate. 
+
+```{r}
+#Is INR depreciation associated with higher CPI inflation in subsequent months (pass-through effect)?
+infcpi_df<- combined%>%
+  mutate(inr_dep = (avg_exchange_rate - lag(avg_exchange_rate)),
+         oil_diff = c(NA, diff(usd_per_barrel)),
+         intersect = oil_diff*inr_dep)%>%
+  select(date, inr_dep,avg_exchange_rate, inf_rate_perc,oil_diff, intersect)
+#Pass-through Effect Analysis
+# Lag inflation rate by 1, 2, and 3 months
+lead_inf<- infcpi_df%>%
+  mutate(lead_1m = lead(inr_dep,1),
+         lead_2m = lead(inr_dep, 2),
+         lead_3m = lead(inr_dep, 3),
+         lag_oil_3m = lag(oil_diff, 3))
+#regression test
+inf_model_3m<- lm(lead_3m~ inf_rate_perc + lag_oil_3m, data = lead_inf)
+#robust standard errors
+coeftest(inf_model_3m, vcov. = vcovHC(inf_model_3m, type = "HC1"))
+```
+
+**Observation**
+
+The regression shows neither current inflation nor 3-month lagged oil prices significantly impact the dependent variable (likely INR depreciation). Both have small, statistically insignificant coefficients (inflation: 0.086, p=0.161; oil: 0.006, p=0.627). The insignificant intercept (-0.234, p=0.459) suggests no baseline trend. Overall, these variables don't explain INR movements in this model, though further testing with different lags or controls may be warranted.
+
+*Conclusion*
+
+No, these variables don’t significantly impact INR depreciation in this analysis.
+
+
+**Further analysis**, This study investigates the relative influence of US (global) and Indian (domestic) VIX on INR exchange rate volatility. To quantify INR volatility, we compute rolling standard deviations of log-differenced exchange rate values, providing a robust measure of currency fluctuations. We then analyze the comparative impact of both VIX measures through statistical modeling, supplemented by visual trend analysis to enhance interpretation. The research aims to determine whether global risk perceptions (proxied by US VIX) or domestic market uncertainty (measured by India VIX) serves as the primary driver of INR volatility, offering valuable insights for currency risk management and policy formulation.
+
+```{r}
+# Calculate INR volatility (monthly log returns standard deviation)
+vix_df<- combined%>%
+  arrange(date)%>%
+  mutate(log_return = log(avg_exchange_rate/lag(avg_exchange_rate)),
+         volatility = rollapply(log_return, width = 3,FUN = sd, 
+                                fill = NA, align = "right"))%>%
+  drop_na(volatility, avg_vix_usa, avg_vix_ind)%>%
+  select(date, avg_exchange_rate, avg_vix_ind,avg_vix_usa, log_return, volatility)
+row.names(vix_df)<- NULL
+vix_df$date<- substr(vix_df$date, 1,4)
+outliers_vix<- vix_df[c(-69,-70),]#removing outliers
+outliers_vix$date<- substr(outliers_vix$date, 1,4)
+# correlation analysis
+cor_vix_ind<- cor(outliers_vix$avg_vix_ind,outliers_vix$volatility)
+cor_vix_usa<- cor(outliers_vix$avg_vix_usa, outliers_vix$volatility)
+cat("Correlation between inr volatility and VIX India", cor_vix_ind, "
+    Correlation between volatility and usa vix", cor_vix_usa)
+#based on results:
+#Conclusion: INR volatility is more influenced by global risk sentiment
+#(US VIX) than domestic uncertainty (India VIX).
+
+#visualizing
+narrow_vixdf<- outliers_vix%>%
+  select(volatility, avg_vix_ind, avg_vix_usa)%>%
+  rename('India VIX' = avg_vix_ind, 'USA VIX' = avg_vix_usa)%>%
+  pivot_longer(cols = c('India VIX', 'USA VIX'),
+               names_to = 'VIX_type', values_to = 'VIX_value')
+ggplot(narrow_vixdf, aes(VIX_value, volatility))+
+  geom_point(col = "lightgreen")+
+  geom_smooth(method = "lm",col = "skyblue")+
+  labs(title = "Rgression:INR Volatility vs VIX (USA & IND)",
+       x = "INR Volatility",
+       y = "VIX Value")+
+  facet_grid(~VIX_type)+
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+**Observation**
+
+INR volatility is more strongly linked to global risk (US VIX) than domestic uncertainty (India VIX). Correlation and trend analysis confirm US VIX plays a bigger role in driving rupee fluctuations, showing the currency's greater sensitivity to global factors. This highlights the need for policymakers and investors to prioritize global risk monitoring when managing INR volatility.
+
+Key finding:
+India VIX's weaker influence may stem from the rupee's global integration or less developed domestic volatility markets. Future research could test these patterns during market crises.
+
+**Next step**, This study checks if the rupee bounces back quickly after falling during high-stress periods (top 25% of VIX values). We track the rupee's movement over the next 1, 2 and 3 months after these stressful times.This tells us how long the rupee stays weak after global market shocks, helping traders and policymakers time their decisions better.
+
+
+```{r}
+#Do INR depreciation during high VIX periods reverse quickly, or do they persist?
+high_vixdf<- outliers_vix%>%
+    filter(avg_vix_usa> quantile(avg_vix_usa, 0.75)) # considering top 25% as high vix period
+dep_highvix<- outliers_vix%>%
+  filter(log_return<0)
+lead_vixdf<- outliers_vix%>%
+  mutate(lead_1m = lead(log_return, 1),
+         lead_2m = lead(log_return, 2),
+         lead_3m = lead(log_return, 3))
+dep_follup_vix<- dep_highvix%>%
+  left_join(lead_vixdf%>% select(date,lead_1m, lead_2m, lead_3m), by = "date")
+#Analyze Reversals
+reversal_vixdf<- dep_follup_vix%>%
+  summarise(reverse1 = mean(lead_1m,na.rm = TRUE),
+            reverse2 = mean(lead_2m, na.rm = TRUE),
+            reverse3 = mean(lead_3m, na.rm = TRUE))
+
+cat("Average reversal for 3 months", reversal_vixdf$reverse1,",", reversal_vixdf$reverse2,"," ,reversal_vixdf$reverse3)
+```
+
+**Observation**
+ 
+ The data shows a slow but steady reversal of INR depreciation after high-VIX periods, with appreciations of 0.10% (1M), 0.12% (2M), and 0.15% (3M). This suggests the rupee does not rebound immediately but gradually recovers over time, indicating persistent pressure from global risk shocks. The small magnitude of reversal (all <0.2%) implies either mild initial depreciation or incomplete recovery, highlighting the INR's volatility.
+
+**Last Variable**, This analysis investigates whether the INR strengthens when India's GDP growth outpaces the US by comparing growth differentials (India-US) with log-differenced exchange rate changes. There is also a plot for better understanding.
+
+```{r}
+#When India’s GDP growth outperforms the US, 
+#does the INR strengthen, or is the effect negligible?
+diff_gdp<- gdp%>%
+  mutate(gdp_dif = growth_rate_ind - growth_rate_usa,
+         exchange_dep = c(NA, diff(log(exchange))))%>%
+  select(gdp_dif, exchange_dep)%>%
+  na.omit()
+cor_gdpdiff<- cor(diff_gdp$gdp_dif, diff_gdp$exchange_dep)
+#While India's GDP growth outperforming the US might theoretically lead to a stronger INR,
+#the observed correlation of +0.21 indicates a weak and slightly opposite effect —
+#suggesting exchange rates are likely driven more
+#by other factors such as interest rate differentials, global risk sentiment,
+#and capital flows, rather than relative GDP growth alone.
+ggplot(diff_gdp, aes(gdp_dif, exchange_dep))+
+  geom_point(color = "#1f77b4", size = 3, alpha = 0.7)+
+  geom_smooth(method = "lm", se = TRUE, linetype = "dashed", lwd = 1.2)+
+  labs(title = "Effect of Growth Differential on INR/USD Exchange Rate",
+    subtitle = "India GDP Growth - US GDP Growth vs INR/USD Exchange Rate",
+    x = "India - US GDP Growth Rate Differential (%)",
+    y = "INR/USD Exchange Rate")+
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 16),
+    plot.subtitle = element_text(size = 13),
+    plot.caption = element_text(size = 10, hjust = 1),
+    panel.grid.minor = element_blank())
+cat("Effect on INR when there is change in growth rate of India 
+    in comparison with USA, correlation",cor_gdpdiff)
+```
+
+**Observation**
+
+The analysis shows a weak positive link (correlation: 0.21) between India's GDP growth outperformance (vs. the US) and INR appreciation, suggesting faster growth provides limited currency support. However, the modest correlation implies global factors (Fed policy, oil prices) dominate INR movements more than growth differentials alone. While favorable growth helps, policymakers may need additional measures (e.g., rate hikes, capital controls) for meaningful INR stability.
+
+*Final Conclusion: Understanding What Drives INR Depreciation*
+
+This study analyzed various macroeconomic and financial factors to understand their influence on the Indian Rupee (INR), particularly in terms of depreciation against other currencies. The goal was to identify the most significant drivers through correlation, regression, and lagged effect analysis.
+
+**NOTE**: As the analysis is based on financial year data from 2014 to 2025, outcomes could vary with higher-frequency data or more advanced methods.
+
+## Key Findings
+
+1. Individual Variables Show Weak Impact
+
+Foreign Portfolio Investment (FPI), Fiscal Deficit, and Trade Balance have weak, scattered relationships with INR depreciation.
+
+Alone, none of these factors significantly explain currency movements. Their effects are minimal and inconsistent.
+
+
+2. Multivariable Regression Provides Better Insight
+
+A multiple regression (OLS) analysis revealed that some variables do have significant effects when considered together.
+
+**INR Weakening Factors:**
+
+*US and India VIX (Market Volatility):* Higher volatility leads to INR depreciation.
+
+*Domestic Interest Rates:* Unexpectedly, higher rates correlate with INR weakness—potentially due to policy reactions during crises.
+
+
+**INR Strengthening Factors:**
+
+*Interest Rate Differential (INR vs. USD):* A positive gap supports INR appreciation.
+
+*Fiscal Deficit:* Surprisingly, a higher fiscal deficit is linked with a stronger INR in the model—possibly a data-specific or policy-driven anomaly.
+
+**Negligible Impact:**
+
+Oil Prices, Net Capital Inflows, and Foreign Exchange Reserves had limited or statistically insignificant influence.
+
+**Lag Effects Matter**
+
+Trade Deficit Lag: A 3-month delay shows a slightly stronger negative correlation (-0.16), implying slow currency response.
+
+Oil Prices: Immediate impact is weak, but a modest effect appears after a 3-month lag (correlation: +0.19).
+
+**Role of Forex Reserves**
+
+*RBI Interventions:* Forex reserve movements often offset FPI outflows, suggesting active stabilization efforts.
+
+*Recovery Time:* Reserves typically recover in ~1.82 months, showing efficient management and resilience.
+
+**Policy Asymmetry and Volatility**
+
+Monetary Policy: INR depreciation reacts more strongly to RBI rate hikes than cuts, indicating asymmetric effects.
+
+**Global vs. Domestic Risk:**
+
+INR volatility is more sensitive to US VIX (correlation: 0.32) than to India VIX (0.27), underlining the dominance of global risk factors.
+
+
+Reversal After Stress: INR depreciations after high-stress periods (top 25% VIX) recover slowly—only 0.15% over 3 months.
+
+
+
+---
+
+**GDP Growth Differential**
+
+A higher Indian growth rate compared to the US is weakly correlated (0.21) with INR appreciation.
+
+Growth alone does not guarantee currency strength—external factors like oil prices and Fed policy appear more influential.
+
+### Overall Conclusion
+
+- No single factor clearly explains INR depreciation. Instead, it is shaped by a complex interaction of domestic and global variables.
+
+- Global risk sentiment (VIX), interest rate differentials, and monetary policy appear to be more impactful than traditional metrics like fiscal deficit or oil prices.
+
+- Lag effects and policy responses (especially from the RBI) play a significant role in moderating or amplifying these relationships.
+
+- For deeper insights or forecasting, a dynamic, multivariable model that includes lagged effects and interaction terms is essential.
+
+
+**Recommendations for Policymakers and Analysts**
+
+- Focus more on managing global exposure, particularly during volatile periods.
+
+- Use interest rate policy carefully, as domestic hikes may weaken INR unexpectedly.
+
+- Maintain adequate forex reserves to buffer against capital flow shocks and support stability.
+
+- Monitor lagged effects of oil prices and fiscal policies in strategic planning.
+
+### Data sources
+
+The data used in this analysis was manually gathered from various sources, as directly downloadable datasets (like .csv files) were unavailable. I visited relevant websites to extract the exact values needed for specific dates required by my study.
+
+**Sources**
+
+- [RBI](https://www.rbi.org.in)
+
+- [Ministry of Commerce](https://commerce.gov.in)
+
+- [Bloomberg](https://www.bloomberg.com)
+
+- [Ministry of Statistics and Programme Implementation](https://mospi.gov.in)
+
+- [Chicago Board Options Exchange](https://www.cboe.com)
+
+- [National Stock Exchange, India](https://www.nseindia.com)
+
+- [Federal Reserve](https://www.federalreserve.gov)
+
+- [Stock Exchange Board of India](https://www.sebi.gov.in)
+
+*Data & Code Access:*
+
+The datasets (in .csv format) and R code for this analysis are available in my GitHub repository: [Brief_Analysis_of_domestic_currency](https://github.com/jeet001b/Brief_Analysis_of_domestic_currency). You'll find cleaned data, scripts for analysis/visualizations, and documentation. Feel free to explore, reuse, or contribute!
